@@ -1,0 +1,1 @@
+"""Quote consumer package initialization."""

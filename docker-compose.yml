@@ -1,0 +1,44 @@
+services:
+  quote-consumer:
+    build: .
+    command: python run.py quote-consumer
+    environment:
+      - DATABASE_PATH=/app/data/quotes.db
+      - BINANCE_WS_URL=wss://stream.binance.com:9443/ws/btcusdt@ticker/ethusdt@ticker/adausdt@ticker/bnbusdt@ticker
+      - QUOTE_SAVE_INTERVAL=30
+      - QUOTE_RETENTION_DAYS=7
+      - LOG_LEVEL=INFO
+    volumes:
+      - quote_data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sqlite3; sqlite3.connect('/app/data/quotes.db').execute('SELECT 1').fetchone()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  api:
+    build: .
+    command: python run.py api
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_PATH=/app/data/quotes.db
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - LOG_LEVEL=INFO
+    volumes:
+      - quote_data:/app/data
+    depends_on:
+      quote-consumer:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  quote_data:
+    driver: local

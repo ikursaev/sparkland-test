@@ -5,101 +5,72 @@ Usage: python run.py [api|quote-consumer]
 
 import asyncio
 import logging
+import os
 import sys
 from pathlib import Path
 
-# Add the project root to the path
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
-from crypto_converter.shared.config import Config
 
+def setup_logging() -> None:
+    """
+    Set up consistent logging configuration for the application.
+    Uses environment variables for configuration.
+    """
+    log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+    log_format = os.getenv(
+        "LOG_FORMAT", "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
+    log_file = os.getenv("LOG_FILE", "crypto_converter.log")
+    log_to_file = os.getenv("LOG_TO_FILE", "true").lower() == "true"
 
-async def run_api():
-    """Run the Currency Conversion API."""
-    try:
-        from crypto_converter.api.service import main as api_main
+    numeric_level = getattr(logging, log_level, logging.INFO)
 
-        await api_main()
-    except ImportError as e:
-        logging.error(f"Failed to import API service: {e}")
-        sys.exit(1)
-    except Exception as e:
-        logging.error(f"API service failed: {e}")
-        sys.exit(1)
+    handlers: list[logging.Handler] = [logging.StreamHandler(sys.stdout)]
 
+    if log_to_file:
+        log_path = Path(log_file)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        handlers.append(logging.FileHandler(log_path))
 
-async def run_quote_consumer():
-    """Run the Quote Consumer service."""
-    try:
-        from crypto_converter.quote_consumer.service import main as consumer_main
-
-        await consumer_main()
-    except ImportError as e:
-        logging.error(f"Failed to import Quote Consumer service: {e}")
-        sys.exit(1)
-    except Exception as e:
-        logging.error(f"Quote Consumer service failed: {e}")
-        sys.exit(1)
-
-
-def setup_logging():
-    """Set up logging configuration."""
     logging.basicConfig(
-        level=getattr(logging, Config.LOG_LEVEL.upper()),
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        handlers=[
-            logging.StreamHandler(sys.stdout),
-            logging.FileHandler("crypto_converter.log"),
-        ],
+        level=numeric_level,
+        format=log_format,
+        handlers=handlers,
+        force=True,  # Override any existing configuration
     )
 
 
-def print_usage():
-    """Print usage information."""
-    print("""
-Crypto Converter - Cryptocurrency conversion API and quote consumer
-
-Usage: python run.py [COMMAND]
-
-Commands:
-    api             Start the Currency Conversion API server
-    quote-consumer  Start the Quote Consumer service
-    help            Show this help message
-
-Examples:
-    python run.py api
-    python run.py quote-consumer
-
-Environment Variables:
-    See .env.example for configuration options
-    """)
+logger = logging.getLogger(__name__)
 
 
 async def main():
-    """Main entry point."""
     if len(sys.argv) != 2:
-        print_usage()
+        print("Usage: python run.py [api|quote-consumer]")
+        print("  api            - Start the Currency Conversion API")
+        print("  quote-consumer - Start the Quote Consumer")
         sys.exit(1)
 
     command = sys.argv[1].lower()
 
-    # Set up logging
     setup_logging()
-    logger = logging.getLogger(__name__)
 
     if command == "api":
-        logger.info("Starting Currency Conversion API...")
-        await run_api()
+        from crypto_converter.api.service import main as run_service
+
+        logger.info("Starting API service...")
     elif command == "quote-consumer":
+        from crypto_converter.quote_consumer.service import main as run_service
+
         logger.info("Starting Quote Consumer...")
-        await run_quote_consumer()
-    elif command in ["help", "-h", "--help"]:
-        print_usage()
     else:
         print(f"Unknown command: {command}")
-        print_usage()
+        print("Usage: python run.py [api|quote-consumer]")
+        print("  api            - Start the Currency Conversion API")
+        print("  quote-consumer - Start the Quote Consumer")
         sys.exit(1)
+    await run_service()
 
 
 if __name__ == "__main__":

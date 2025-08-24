@@ -1,0 +1,74 @@
+{
+  "name": "Crypto Converter Dev Container",
+  "dockerFile": "Dockerfile",
+  "context": "..",
+  "workspaceFolder": "/app",
+  // Bind-mount the local workspace into /app so changes reflect on host
+  "workspaceMount": "source=${localWorkspaceFolder},target=/app,type=bind",
+
+  // Configure tool-specific properties
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.pylint",
+        "ms-python.black-formatter",
+        "charliermarsh.ruff",
+        "ms-python.mypy-type-checker",
+        "ms-vscode.test-adapter-converter",
+        "littlefoxteam.vscode-python-test-adapter",
+        "ms-python.debugpy",
+        "eamodio.gitlens"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.formatting.provider": "black",
+        "python.linting.enabled": true,
+        "python.linting.ruffEnabled": true,
+        "python.linting.pylintEnabled": false,
+        "python.testing.pytestEnabled": true,
+        "python.testing.unittestEnabled": false,
+        "python.testing.pytestArgs": [
+          "tests"
+        ],
+        "settingsSync.keybindingsPerPlatform": false
+      }
+    }
+  },
+
+  // Use 'postCreateCommand' to run commands after the container is created
+  // Normalize CRLF to LF to avoid bad interpreter errors, then run with POSIX sh
+  "postCreateCommand": "sed -i 's/\\r$//' .devcontainer/setup.sh && chmod +x .devcontainer/setup.sh && sh .devcontainer/setup.sh",
+
+  // Configure port forwarding for the FastAPI app
+  "forwardPorts": [8000],
+  "portsAttributes": {
+    "8000": {
+      "label": "FastAPI App",
+      "onAutoForward": "notify"
+    }
+  },
+
+  // Set environment variables
+  "containerEnv": {
+    "PYTHONPATH": "/app",
+    "PYTHONUNBUFFERED": "1",
+    "CODEX_HOME": ".codex"
+  },
+
+  // Configure container user
+  "remoteUser": "root",
+
+  // Mount the Docker socket to enable Docker-in-Docker if needed
+  "mounts": [
+    "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind",
+    "source=${localEnv:USERPROFILE}/.gitconfig,target=/root/.gitconfig,type=bind"
+  ],
+
+  // Configure features
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "lts"
+    }
+  }
+}

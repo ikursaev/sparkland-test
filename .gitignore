@@ -60,6 +60,8 @@ venv.bak/
 *.swp
 *.swo
 *~
+.github/
+.codex/
 
 # OS generated files
 .DS_Store
@@ -76,3 +78,4 @@ Thumbs.db
 
 # Docker
 .dockerignore
+

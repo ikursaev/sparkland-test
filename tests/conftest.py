@@ -4,21 +4,14 @@ Test configuration for the crypto converter tests.
 
 import asyncio
 import os
-import sys
 import tempfile
 from datetime import UTC, datetime
-from pathlib import Path
 
 import pytest
 import pytest_asyncio
 
-# Add project root to path before importing our modules
-project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
-
-# Import our modules after path setup
-from crypto_converter.shared.models import Quote  # noqa: E402
-from crypto_converter.shared.storage import QuoteStorage  # noqa: E402
+from crypto_converter.storage.models import Quote  # noqa: E402
+from crypto_converter.storage.quote_storage import QuoteStorage  # noqa: E402
 
 
 @pytest.fixture(scope="session")

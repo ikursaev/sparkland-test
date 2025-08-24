@@ -12,9 +12,11 @@ The Crypto Converter consists of two main components that run as separate proces
 ## Features
 
 - **Real-time Currency Conversion**: Convert between cryptocurrencies using live market rates
-- **WebSocket Integration**: Real-time quote updates from Binance exchange
-- **Historical Data Support**: Optional timestamp parameter for historical conversions
+- **Historical Conversions**: Convert using quotes from specific dates with the timestamp parameter
+- **Comprehensive Symbol Coverage**: Automatically fetches and supports ALL active trading pairs from Binance (~2,600 symbols)
+- **REST API Integration**: Reliable quote updates using Binance REST API with configurable polling intervals
 - **Quote Freshness Validation**: Ensures quotes are not older than 1 minute for live conversions
+- **Timezone-Aware Storage**: All quotes stored in UTC with proper timezone handling
 - **Automatic Data Cleanup**: Removes quotes older than 7 days
 - **Docker Support**: Easy deployment with docker-compose
 - **Comprehensive Testing**: Unit tests and integration tests included
@@ -25,12 +27,12 @@ The Crypto Converter consists of two main components that run as separate proces
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
 │   Binance API   │    │ Quote Consumer  │    │ SQLite Database │
-│  (WebSocket)    │───▶│                 │───▶│                 │
+│   (REST API)    │───>│                 │───>│                 │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
                                                         │
-┌─────────────────┐    ┌─────────────────┐            │
-│   Client/User   │    │ Conversion API  │            │
-│                 │◄───│                 │◄───────────┘
+┌─────────────────┐    ┌─────────────────┐              │
+│   Client/User   │    │ Conversion API  │              │
+│                 │<───│                 │<─────────────┘
 └─────────────────┘    └─────────────────┘
 ```
 
@@ -44,44 +46,46 @@ The Crypto Converter consists of two main components that run as separate proces
    cd crypto-converter
    ```
 
-2. **Start the services:**
+2. **Copy and edit environment configuration:**
    ```bash
-   docker-compose up
+   cp .env.example .env
    ```
 
-3. **Test the API:**
+3. **Start the services:**
    ```bash
-   curl "http://localhost:8000/convert?amount=1&from=BTCUSDT&to=ETHUSDT"
+   docker-compose up
    ```
 
 ### Manual Installation
 
 1. **Install dependencies:**
    ```bash
-   pip install -r requirements.txt
+   uv sync
    ```
 
-2. **Copy environment configuration:**
+2. **Copy and edit environment configuration:**
    ```bash
    cp .env.example .env
    ```
 
 3. **Start the Quote Consumer:**
    ```bash
-   python run.py quote-consumer
+   uv run python run.py quote-consumer
    ```
 
 4. **In another terminal, start the API:**
    ```bash
-   python run.py api
+   uv run python run.py api
    ```
 
 ## API Documentation
 
 ### Base URL
 ```
-http://localhost:8000
+http://localhost:{API_PORT}
 ```
+*Default port is 8000, but can be configured via the API_PORT environment variable.*
+*For Docker deployments, the API_HOST should remain 0.0.0.0 to accept connections from outside the container.*
 
 ### Endpoints
 
@@ -109,9 +113,14 @@ GET /convert?amount={amount}&from={from_currency}&to={to_currency}[&timestamp={i
 - `to` (required): Target currency symbol (e.g., "ETHUSDT")
 - `timestamp` (optional): ISO format timestamp for historical conversion
 
-**Example Request:**
+**Live Conversion Example:**
 ```bash
-curl "http://localhost:8000/convert?amount=1.5&from=BTCUSDT&to=ETHUSDT"
+curl "http://localhost:${API_PORT:-8000}/convert?amount=1.5&from=BTCUSDT&to=ETHUSDT"
+```
+
+**Historical Conversion Example:**
+```bash
+curl "http://localhost:${API_PORT:-8000}/convert?amount=1&from=BTCUSDT&to=ETHUSDT&timestamp=2025-08-12T15:30:00"
 ```
 
 **Success Response:**
@@ -152,129 +161,98 @@ curl "http://localhost:8000/convert?amount=1.5&from=BTCUSDT&to=ETHUSDT"
 }
 ```
 
+### Historical Conversions (Timestamp Feature)
+
+The API supports historical conversions using the optional `timestamp` parameter. This feature allows you to get conversion rates using quotes from a specific day.
+
+#### How It Works
+
+- **UTC Storage**: All quotes are stored with UTC timestamps for consistency
+- **Day-Based Retrieval**: When a timestamp is provided, the API finds the last available quote from that specific day
+- **Timezone Awareness**: The system properly handles timezone differences
+
+#### Timestamp Format
+
+Use ISO 8601 format for timestamps:
+- `YYYY-MM-DDTHH:MM:SS` (e.g., `2025-08-12T15:30:00`)
+- `YYYY-MM-DDTHH:MM:SSZ` (with explicit UTC timezone)
+- `YYYY-MM-DDTHH:MM:SS+00:00` (with timezone offset)
+
+#### Examples
+
+**Get conversion rate from a specific day:**
+```bash
+curl "http://localhost:8000/convert?amount=100&from=ETHUSDT&to=BNBUSDT&timestamp=2025-08-12T12:00:00"
+```
+
+**Response includes the actual timestamp of the quote used:**
+```json
+{
+  "amount": 100.0,
+  "from_currency": "ETHUSDT",
+  "to_currency": "BNBUSDT",
+  "converted_amount": 549.02,
+  "rate": 5.4902,
+  "timestamp": "2025-08-12T22:34:03.171547+00:00"
+}
+```
+
+#### Important Notes
+
+- **Data Availability**: Historical data is only available for days when quotes were collected
+- **UTC Time**: The system stores quotes in UTC time, so be aware of timezone differences
+- **Quote Retention**: Quotes older than 7 days are automatically cleaned up
+- **Last Quote of Day**: The API returns the last available quote from the requested day
+
+#### Timezone Considerations
+
+If your local time is ahead of UTC, be aware that:
+- Quotes are stored with UTC timestamps
+- A request for "today" might not find data if it's still "yesterday" in UTC
+- Always check the `timestamp` field in the response to see which quote was actually used
+
+**Example timezone scenario:**
+- Your local time: `2025-08-13 01:30` (UTC+3)
+- UTC time: `2025-08-12 22:30`
+- Quotes exist for: `2025-08-12` (UTC)
+- Request for `2025-08-13T12:00:00`: ❌ No data (future UTC date)
+- Request for `2025-08-12T12:00:00`: ✅ Returns last quote from August 12
+
 ## Configuration
 
-All configuration is done through environment variables. See `.env.example` for available options:
+All configuration is done through environment variables. See `.env.example` for available options.
+
+**Both Docker and manual installations use the same `.env` file for configuration.**
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `DATABASE_PATH` | `./quotes.db` | SQLite database file path |
-| `API_HOST` | `0.0.0.0` | API server host |
+| `API_HOST` | `0.0.0.0` | API server host (use `0.0.0.0` for Docker, `127.0.0.1` for local-only) |
 | `API_PORT` | `8000` | API server port |
-| `BINANCE_WS_URL` | WebSocket URL | Binance WebSocket endpoint |
+| `BINANCE_REST_URL` | `https://api.binance.com` | Binance REST API base URL |
+| `HTTP_POLLING_INTERVAL` | `10` | Quote fetching interval (seconds) |
 | `QUOTE_SAVE_INTERVAL` | `30` | Quote save interval (seconds) |
 | `QUOTE_RETENTION_DAYS` | `7` | Quote retention period (days) |
 | `LOG_LEVEL` | `INFO` | Logging level |
 
 ## Supported Currency Pairs
 
-The system supports direct conversions between currencies that share a common base:
+The system automatically fetches and supports **ALL active trading pairs from Binance** (currently ~2,600 symbols), including:
 
-- **USDT-based pairs**: BTCUSDT ↔ ETHUSDT, BTCUSDT ↔ ADAUSDT, etc.
-- **BTC-based pairs**: ETHBTC ↔ ADABTC, etc.
-- **ETH-based pairs**: ADAETH ↔ BNBETH, etc.
+- **USDT-based pairs**: 537+ pairs (BTCUSDT, ETHUSDT, ADAUSDT, etc.)
+- **BTC-based pairs**: 376+ pairs (ETHBTC, ADABTC, etc.)
+- **Other base currencies**: ETH, BNB, FDUSD, and many more
+
+The system supports direct conversions between currencies that share a common base currency:
+- BTCUSDT ↔ ETHUSDT ↔ ADAUSDT (all share USDT base)
+- ETHBTC ↔ ADABTC (both share BTC base)
 
 Cross-currency conversions (e.g., BTCUSDT → LTCETH) are not supported to keep the implementation simple.
 
-## Development
+### Automatic Symbol Discovery
 
-### Project Structure
-```
-crypto_converter/
-├── api/                 # FastAPI application
-│   ├── __init__.py
-│   └── service.py
-├── quote_consumer/      # Quote consumer service
-│   ├── __init__.py
-│   └── service.py
-└── shared/              # Shared components
-    ├── __init__.py
-    ├── config.py        # Configuration management
-    ├── models.py        # Data models
-    └── storage.py       # Database interface
-tests/                   # Test suite
-├── __init__.py
-├── conftest.py         # Test configuration
-├── test_api.py         # API tests
-├── test_storage.py     # Storage tests
-└── test_integration.py # Integration tests
-run.py                  # Main entry point
-requirements.txt        # Python dependencies
-Dockerfile             # Docker image definition
-docker-compose.yml     # Docker services configuration
-```
+The system automatically:
+1. Fetches all active trading symbols from Binance's `exchangeInfo` API
+2. Collects real-time quotes for all discovered symbols
+3. No manual configuration of symbol lists is required
 
-### Running Tests
-
-```bash
-# Install test dependencies
-pip install pytest pytest-asyncio
-
-# Run all tests
-pytest
-
-# Run with coverage
-pytest --cov=crypto_converter
-
-# Run specific test file
-pytest tests/test_api.py -v
-```
-
-### Adding New Currency Pairs
-
-To add support for new currency pairs:
-
-1. Update the `BINANCE_WS_URL` in your environment configuration to include the new ticker symbols
-2. The system will automatically start collecting quotes for the new pairs
-3. Ensure the pairs follow the supported conversion logic in `_is_direct_pair()` function
-
-### Logging
-
-The application logs to both console and file (`crypto_converter.log`). Log levels can be controlled via the `LOG_LEVEL` environment variable.
-
-## Troubleshooting
-
-### Common Issues
-
-**Quote Consumer not connecting:**
-- Check internet connectivity
-- Verify Binance WebSocket URL is accessible
-- Check firewall settings
-
-**API returning "quotes_not_found":**
-- Ensure Quote Consumer is running and collecting data
-- Wait a few minutes for initial quote collection
-- Check database file exists and is writable
-
-**API returning "quotes_outdated":**
-- Verify Quote Consumer is actively receiving updates
-- Check WebSocket connection status
-- Ensure system time is synchronized
-
-**Docker containers not starting:**
-- Check Docker and docker-compose are installed
-- Verify port 8000 is not in use
-- Check container logs: `docker-compose logs`
-
-### Performance Considerations
-
-- The SQLite database is suitable for development and moderate production use
-- For high-volume production deployments, consider migrating to PostgreSQL or MySQL
-- Quote Consumer memory usage is minimal as quotes are periodically saved and buffered data is cleared
-- API response time is typically under 50ms for cached quote lookups
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature-name`
-3. Make your changes and add tests
-4. Run the test suite: `pytest`
-5. Submit a pull request
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Disclaimer
-
-This software is for educational and development purposes. Do not use in production without proper testing and security review. Cryptocurrency trading involves risk, and this tool should not be used for actual financial decisions without proper validation.

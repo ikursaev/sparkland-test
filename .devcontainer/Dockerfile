@@ -16,8 +16,8 @@ RUN apt-get update && apt-get install -y \
 RUN pip install uv
 
 
-# Copy dependency files and README for build (for better Docker layer caching)
-COPY pyproject.toml uv.lock* README.md ./
+# Copy dependency files for build (for better Docker layer caching)
+COPY pyproject.toml uv.lock* ./
 
 # Install Python dependencies using uv
 RUN uv sync --dev
@@ -34,6 +34,3 @@ EXPOSE 8000
 # Set environment variables
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
-
-# Default command for development
-CMD ["uv", "run", "uvicorn", "run:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
